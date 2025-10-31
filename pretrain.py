@@ -236,7 +236,7 @@ def init_train_state(config: PretrainConfig, train_metadata: PuzzleDatasetMetada
 def save_train_state(config: PretrainConfig, train_state: TrainState):
     # FIXME: Only saved model.
     if config.checkpoint_path is None:
-        return
+        config.checkpoint_path = os.path.join("/kaggle/working", config.project_name, config.run_name)
 
     os.makedirs(config.checkpoint_path, exist_ok=True)
     torch.save(train_state.model.state_dict(), os.path.join(config.checkpoint_path, f"step_{train_state.step}"))
