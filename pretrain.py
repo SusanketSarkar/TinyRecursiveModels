@@ -533,11 +533,17 @@ def load_synced_config(hydra_config: DictConfig, rank: int, world_size: int) -> 
     return objects[0]  # type: ignore
 
 
-@hydra.main(config_path="config", config_name="cfg_pretrain", version_base=None)
-def launch(hydra_config: DictConfig):
+def launch(config_path = "config/default.yml"):
     RANK = 0
     WORLD_SIZE = 1
     CPU_PROCESS_GROUP = None
+
+    with open(config_path, "r") as f:
+        base_cfg = yaml.safe_load(f)
+    from omegaconf import OmegaConf
+    config = OmegaConf.create(base_cfg)
+
+    # hydra_config['run_name'] = "pretrain_mlp_t_sudoku"
 
     # Initialize distributed training if in distributed environment (e.g. torchrun)
     if "LOCAL_RANK" in os.environ:
@@ -556,7 +562,7 @@ def launch(hydra_config: DictConfig):
         )
 
     # Load sync'ed config
-    config = load_synced_config(hydra_config, rank=RANK, world_size=WORLD_SIZE)
+    config = load_synced_config(config, rank=RANK, world_size=WORLD_SIZE)
 
     # Seed RNGs to ensure consistency
     torch.random.manual_seed(config.seed + RANK)
@@ -652,6 +658,4 @@ def launch(hydra_config: DictConfig):
 
 
 if __name__ == "__main__":
-    import torch
-    print(torch.cuda.is_available())
     launch()
