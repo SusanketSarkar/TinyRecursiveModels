@@ -17,7 +17,7 @@ import coolname
 import hydra
 import pydantic
 from omegaconf import DictConfig
-from adam_atan2 import AdamATan2
+from adam_atan2_pytorch import AdamAtan2
 
 from puzzle_dataset import PuzzleDataset, PuzzleDatasetConfig, PuzzleDatasetMetadata
 from utils.functions import load_model_class, get_model_source_path
@@ -127,7 +127,7 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
     model_cls = load_model_class(config.arch.name)
     loss_head_cls = load_model_class(config.arch.loss.name)
 
-    with torch.device("cuda"):
+    with torch.device("cpu"):
         model: nn.Module = model_cls(model_cfg)
         print(model)
         model = loss_head_cls(model, **config.arch.loss.__pydantic_extra__)  # type: ignore
@@ -147,9 +147,9 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
     # Optimizers and lr
     if config.arch.puzzle_emb_ndim == 0:
         optimizers = [
-            AdamATan2(
+            AdamAtan2(
                 model.parameters(),
-                lr=0,  # Needs to be set by scheduler
+                lr=1e-4,  # Needs to be set by scheduler
                 weight_decay=config.weight_decay,
                 betas=(config.beta1, config.beta2)
             )
@@ -161,7 +161,7 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
         optimizers = [
             CastedSparseEmbeddingSignSGD_Distributed(
                 model.model.puzzle_emb.buffers(),  # type: ignore
-                lr=0,  # Needs to be set by scheduler
+                lr=1e-4,  # Needs to be set by scheduler
                 weight_decay=config.puzzle_emb_weight_decay,
                 world_size=world_size
             )
@@ -173,13 +173,13 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
         optimizers = [
             CastedSparseEmbeddingSignSGD_Distributed(
                 model.model.puzzle_emb.buffers(),  # type: ignore
-                lr=0,  # Needs to be set by scheduler
+                lr=1e-4,  # Needs to be set by scheduler
                 weight_decay=config.puzzle_emb_weight_decay,
                 world_size=world_size
             ),
-            AdamATan2(
+            AdamAtan2(
                 model.parameters(),
-                lr=0,  # Needs to be set by scheduler
+                lr=1e-4,  # Needs to be set by scheduler
                 weight_decay=config.weight_decay,
                 betas=(config.beta1, config.beta2)
             )
@@ -292,11 +292,12 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
         return
 
     # To device
-    batch = {k: v.cuda() for k, v in batch.items()}
+    device = torch.device("cpu")
+    batch = {k: v.to(device) for k, v in batch.items()}
 
     # Init carry if it is None
     if train_state.carry is None:
-        with torch.device("cuda"):
+        with torch.device("cpu"):
             train_state.carry = train_state.model.initial_carry(batch)  # type: ignore
 
     # Forward
@@ -651,4 +652,6 @@ def launch(hydra_config: DictConfig):
 
 
 if __name__ == "__main__":
+    import torch
+    print(torch.cuda.is_available())
     launch()
