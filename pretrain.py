@@ -291,35 +291,45 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
     if train_state.step > train_state.total_steps:  # At most train_total_steps
         return
 
+    print(f"Train batch {train_state.step} of {train_state.total_steps}")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    print(f"Using device {device}")
+
     # To device
-    device = torch.device("cpu")
     batch = {k: v.to(device) for k, v in batch.items()}
 
     # Init carry if it is None
     if train_state.carry is None:
-        with torch.device("cpu"):
+        with torch.device(device):
             train_state.carry = train_state.model.initial_carry(batch)  # type: ignore
 
     # Forward
     train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
 
+    print(f"Loss: {loss}")
+    print("Backpropagationg...")
+    print(f"Loss: {loss}")
     ((1 / global_batch_size) * loss).backward()
+    print("Backpropagation done")
 
     # Allreduce
+    print("Allreduce...")
     if world_size > 1:
         for param in train_state.model.parameters():
             if param.grad is not None:
                 dist.all_reduce(param.grad)
-            
+    print("Allreduce done")
     # Apply optimizer
     lr_this_step = None    
     for optim, base_lr in zip(train_state.optimizers, train_state.optimizer_lrs):
+        print(f"Optimizer: {optim.__class__.__name__}")
         lr_this_step = compute_lr(base_lr, config, train_state)
-
+        print(f"LR: {lr_this_step}")
         for param_group in optim.param_groups:
             param_group['lr'] = lr_this_step
-            
+            print(f"Param group LR: {param_group['lr']}")
         optim.step()
+        print("Step done")
         optim.zero_grad()
 
     # Reduce metrics
